@@ -136,7 +136,7 @@ async function startServer() {
   };
 
   await initDb();
-  
+
   // Shared Transporter Function for speed & consistency
   const getTransporter = async () => {
     const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
@@ -154,6 +154,20 @@ async function startServer() {
       tls: { rejectUnauthorized: false }
     });
   };
+
+  // Cached transporter — initialized once at startup, refreshed on settings update
+  let cachedTransporter: any = null;
+
+  const initializeTransporter = async () => {
+    try {
+      cachedTransporter = await getTransporter();
+      console.log('[SMTP] Transporter initialized and cached.');
+    } catch (err: any) {
+      console.error('[SMTP] Failed to initialize transporter:', err.message);
+    }
+  };
+
+  await initializeTransporter();
 
   // API Routes
 
@@ -178,7 +192,7 @@ async function startServer() {
         return res.json({ success: true, count: 0, message: 'No overdue students found' });
       }
 
-      const transporter = await getTransporter();
+      const transporter = cachedTransporter;
 
       let sentCount = 0;
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -491,6 +505,7 @@ async function startServer() {
          WHERE id = 1 RETURNING *`,
         [institute_name, phone, email, address, facebook_url, twitter_url, instagram_url, linkedin_url, contact_form_email, smtp_host, email_password]
       );
+      await initializeTransporter();
       res.json(rows[0]);
     } catch (error) {
       console.error('[DB] Setting save error:', error);
@@ -504,7 +519,7 @@ async function startServer() {
       const { rows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
       const settings = rows[0] || {};
 
-      const transporter = await getTransporter();
+      const transporter = cachedTransporter;
 
       console.log(`\n================================`);
       console.log(`[CONTACT FORM] Message from ${name} (${email})`);
@@ -561,7 +576,7 @@ async function startServer() {
 
       if (fromEmail) {
         try {
-          const transporter = await getTransporter();
+          const transporter = cachedTransporter;
 
           await transporter.sendMail({
             from: `"${fromName}" <${fromEmail}>`,
@@ -632,7 +647,7 @@ async function startServer() {
         const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password, institute_name FROM website_settings WHERE id = 1');
         const settings = settingsRows[0] || {};
         
-        const transporter = await getTransporter();
+        const transporter = cachedTransporter;
 
         const targetUser = process.env.EMAIL_USER || settings.contact_form_email;
         if (targetUser) {
@@ -754,7 +769,7 @@ async function startServer() {
 
     // 3. Send email via Nodemailer
     try {
-      const transporter = await getTransporter();
+      const transporter = cachedTransporter;
 
       const targetEmail = process.env.ADMIN_OTP_EMAIL || 'divyanshucmd@gmail.com';
       const mailOptions = {
