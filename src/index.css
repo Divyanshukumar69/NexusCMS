@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@theme {
+  /* Obsidian Base Palette - High End Editorial */
+  --color-obsidian-surface: #090f14;
+  --color-obsidian-container-lowest: #0b1218;
+  --color-obsidian-container-low: #0e141a;
+  --color-obsidian-container: #131a21;
+  --color-obsidian-container-high: #192027;
+  --color-obsidian-container-highest: #1e272e;
+  
+  /* Signature Blue Palette */
+  --color-obsidian-primary: #007aff;
+  --color-obsidian-primary-dim: #005bc1;
+  --color-obsidian-primary-bright: #85adff;
+  
+  /* Material Colors */
+  --color-on-surface: #dde3ea;
+  --color-on-surface-variant: #c1c6d7;
+  --color-outline-variant: rgba(139, 144, 160, 0.15);
+
+  /* Font Family */
+  --font-manrope: "Manrope", sans-serif;
+  --font-inter: "Inter", sans-serif;
+
+  /* Elevation */
+  --shadow-obsidian: 0 24px 48px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 20px rgba(0, 122, 255, 0.15);
+}
+
+@layer base {
+  body {
+    @apply bg-obsidian-surface text-on-surface font-inter antialiased selection:bg-obsidian-primary/30;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-manrope tracking-tight leading-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-obsidian-container/60 backdrop-blur-2xl border border-outline-variant shadow-obsidian rounded-[2.5rem];
+  }
+  
+  .glass-sidebar {
+    @apply bg-obsidian-container-low/80 backdrop-blur-3xl border-r border-outline-variant;
+  }
+  
+  .obsidian-gradient {
+    @apply bg-linear-to-br from-obsidian-primary-dim via-obsidian-primary to-obsidian-primary-bright;
+  }
+  
+  .obsidian-text-gradient {
+    @apply text-transparent bg-clip-text bg-linear-to-br from-obsidian-primary to-obsidian-primary-bright;
+  }
+
+  .premium-input {
+    @apply bg-obsidian-container-lowest border border-outline-variant rounded-2xl px-5 py-3 text-sm focus:ring-2 focus:ring-obsidian-primary/40 focus:border-obsidian-primary/40 outline-none transition-all;
+  }
+
+  .premium-button {
+    @apply px-6 py-3 bg-linear-to-br from-obsidian-primary-dim via-obsidian-primary to-obsidian-primary-bright text-white rounded-2xl font-bold hover:scale-[1.02] active:scale-[0.98] transition-all shadow-glow;
+  }
+}
+
+/* Scrollbar Hardening */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-obsidian-surface;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-obsidian-container-highest rounded-full hover:bg-obsidian-primary/60 transition-colors;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
