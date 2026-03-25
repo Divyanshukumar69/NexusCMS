@@ -734,43 +734,77 @@ async function startServer() {
   });
 
   // OTP Storage (In-memory for demo)
-  const otps = new Map<string, string>();
+  const otps = new Map<string, { otp: string; generatedAt: number }>();
 
   app.post('/api/send-otp', async (req, res) => {
     const { email, password } = req.body;
+    const requestId = Date.now().toString(36).toUpperCase();
 
-    // 1. Verify credentials (default to placeholders if env is missing)
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`[OTP:${requestId}] Admin OTP request received at ${new Date().toISOString()}`);
+    console.log(`[OTP:${requestId}] Login attempt for email: ${email}`);
+
+    // 1. Verify credentials
     const adminEmail = process.env.ADMIN_EMAIL || 'divyanshucmd@gmail.com';
     const adminPassword = process.env.ADMIN_PASSWORD || '45876';
 
     if (email !== adminEmail || password !== adminPassword) {
-      console.warn(`[OTP] Failed login attempt for ${email}`);
+      console.warn(`[OTP:${requestId}] FAILED — credentials mismatch for: ${email}`);
+      console.log(`${'='.repeat(60)}\n`);
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
+    console.log(`[OTP:${requestId}] Credentials verified OK`);
+
     // 2. Generate random 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    otps.set(email, otp);
+    otps.set(email, { otp, generatedAt: Date.now() });
+    console.log(`[OTP:${requestId}] OTP generated and stored in memory`);
 
-    // 3. Send email via Nodemailer
+    // 3. Validate email configuration before attempting send
     try {
-      // Check if SMTP is configured (either in Env or DB)
       const { rows: settingsRows } = await pool.query('SELECT contact_form_email, email_password FROM website_settings WHERE id = 1');
       const settings = settingsRows[0] || {};
+
       const smtpUser = process.env.EMAIL_USER || settings.contact_form_email;
       const smtpPass = process.env.EMAIL_PASS || settings.email_password;
+      const targetEmail = process.env.ADMIN_OTP_EMAIL || settings.contact_form_email;
 
+      console.log(`[OTP:${requestId}] --- Email Configuration Diagnostics ---`);
+      console.log(`[OTP:${requestId}] EMAIL_USER env set:      ${process.env.EMAIL_USER ? 'YES (' + maskEmail(process.env.EMAIL_USER) + ')' : 'NO'}`);
+      console.log(`[OTP:${requestId}] EMAIL_PASS env set:      ${process.env.EMAIL_PASS ? 'YES (length=' + process.env.EMAIL_PASS.length + ')' : 'NO'}`);
+      console.log(`[OTP:${requestId}] ADMIN_OTP_EMAIL env set: ${process.env.ADMIN_OTP_EMAIL ? 'YES (' + maskEmail(process.env.ADMIN_OTP_EMAIL) + ')' : 'NO'}`);
+      console.log(`[OTP:${requestId}] DB contact_form_email:   ${settings.contact_form_email ? maskEmail(settings.contact_form_email) : 'NOT SET'}`);
+      console.log(`[OTP:${requestId}] DB email_password set:   ${settings.email_password ? 'YES (length=' + settings.email_password.length + ')' : 'NO'}`);
+      console.log(`[OTP:${requestId}] Resolved SMTP sender:   ${smtpUser ? maskEmail(smtpUser) : 'NONE — cannot send'}`);
+      console.log(`[OTP:${requestId}] Resolved OTP recipient: ${targetEmail ? maskEmail(targetEmail) : 'NONE — cannot send'}`);
+      console.log(`[OTP:${requestId}] --- End Diagnostics ---`);
+
+      // Guard: no SMTP credentials
       if (!smtpUser || !smtpPass) {
-        console.warn(`[OTP SERVICE] SMTP not configured. OTP: ${otp} (Demo Mode)`);
-        return res.json({
-          message: 'OTP generated (SMTP NOT CONFIGURED)',
-          demo_otp: otp
+        console.error(`[OTP:${requestId}] SMTP credentials missing — EMAIL_USER and/or EMAIL_PASS not configured`);
+        console.log(`${'='.repeat(60)}\n`);
+        return res.status(500).json({
+          error: 'Email service not configured. Set EMAIL_USER and EMAIL_PASS environment variables.',
+          debug_otp: process.env.NODE_ENV !== 'production' ? otp : undefined
         });
       }
 
+      // Guard: no recipient address
+      if (!targetEmail) {
+        console.error(`[OTP:${requestId}] No OTP recipient — set ADMIN_OTP_EMAIL environment variable`);
+        console.log(`${'='.repeat(60)}\n`);
+        return res.status(500).json({
+          error: 'OTP recipient not configured. Set ADMIN_OTP_EMAIL environment variable.',
+          debug_otp: process.env.NODE_ENV !== 'production' ? otp : undefined
+        });
+      }
+
+      // 4. Build transporter and attempt send
+      console.log(`[OTP:${requestId}] Creating SMTP transporter...`);
       const transporter = await getTransporter();
-      const targetEmail = process.env.ADMIN_OTP_EMAIL || settings.contact_form_email || 'divyanshucmd@gmail.com';
-      
+      console.log(`[OTP:${requestId}] Transporter ready`);
+
       const mailOptions = {
         from: `"NexusCMS Auth" <${smtpUser}>`,
         to: targetEmail,
@@ -787,35 +821,83 @@ async function startServer() {
         `,
       };
 
-      // Send email in background - extremely fast login
-      transporter.sendMail(mailOptions).catch(err => console.error('[OTP ERROR] Background mail failed:', err.message));
-      
-      console.log(`[OTP SERVICE] Token ${otp} dispatched to ${targetEmail} in background...`);
-      res.json({ message: 'Neural token dispatched. Check your neural inbox.' });
+      console.log(`[OTP:${requestId}] Attempting to send OTP email...`);
+      console.log(`[OTP:${requestId}]   From: ${maskEmail(smtpUser)}`);
+      console.log(`[OTP:${requestId}]   To:   ${maskEmail(targetEmail)}`);
 
-    } catch (error) {
-      console.error('Error sending email:', error);
-      // Fallback for demo in dev mode if email fails
-      if (process.env.NODE_ENV !== 'production') {
-        return res.json({
-          message: 'Email service error, but OTP was generated for demo',
-          demo_otp: otp
+      try {
+        const info = await transporter.sendMail(mailOptions);
+        console.log(`[OTP:${requestId}] Email sent successfully`);
+        console.log(`[OTP:${requestId}]   Message ID: ${info.messageId}`);
+        console.log(`[OTP:${requestId}]   Response:   ${info.response}`);
+        console.log(`[OTP:${requestId}]   Accepted:   ${JSON.stringify(info.accepted)}`);
+        console.log(`[OTP:${requestId}]   Rejected:   ${JSON.stringify(info.rejected)}`);
+        if (info.rejected && info.rejected.length > 0) {
+          console.error(`[OTP:${requestId}] WARNING — some recipients were rejected: ${JSON.stringify(info.rejected)}`);
+        }
+        console.log(`${'='.repeat(60)}\n`);
+        return res.json({ message: 'Neural token dispatched. Check your neural inbox.' });
+      } catch (smtpError: any) {
+        console.error(`[OTP:${requestId}] SMTP send FAILED`);
+        console.error(`[OTP:${requestId}]   Error code:    ${smtpError.code || 'N/A'}`);
+        console.error(`[OTP:${requestId}]   Error message: ${smtpError.message}`);
+        console.error(`[OTP:${requestId}]   Response code: ${smtpError.responseCode || 'N/A'}`);
+        console.error(`[OTP:${requestId}]   Response:      ${smtpError.response || 'N/A'}`);
+        console.error(`[OTP:${requestId}]   Command:       ${smtpError.command || 'N/A'}`);
+        if (smtpError.code === 'EAUTH') {
+          console.error(`[OTP:${requestId}]   DIAGNOSIS: Authentication failed — check EMAIL_USER and EMAIL_PASS. For Gmail, ensure an App Password is used (not your account password).`);
+        } else if (smtpError.code === 'ECONNECTION' || smtpError.code === 'ETIMEDOUT') {
+          console.error(`[OTP:${requestId}]   DIAGNOSIS: Could not connect to SMTP server — check network/firewall or EMAIL_SERVICE config.`);
+        } else if (smtpError.responseCode === 550 || smtpError.responseCode === 553) {
+          console.error(`[OTP:${requestId}]   DIAGNOSIS: Recipient address rejected by mail server — verify ADMIN_OTP_EMAIL is a valid address.`);
+        }
+        console.log(`${'='.repeat(60)}\n`);
+        return res.status(500).json({
+          error: `Failed to send OTP email: ${smtpError.message}`,
+          code: smtpError.code || null,
+          debug_otp: process.env.NODE_ENV !== 'production' ? otp : undefined
         });
       }
-      res.status(500).json({ error: 'Failed to send OTP email' });
+
+    } catch (error: any) {
+      console.error(`[OTP:${requestId}] Unexpected error in send-otp handler: ${error.message}`);
+      console.error(error);
+      console.log(`${'='.repeat(60)}\n`);
+      return res.status(500).json({
+        error: 'Internal server error while processing OTP request',
+        debug_otp: process.env.NODE_ENV !== 'production' ? otp : undefined
+      });
     }
   });
 
   app.post('/api/verify-otp', (req, res) => {
     const { email, otp } = req.body;
-    const storedOtp = otps.get(email);
+    const record = otps.get(email);
 
-    if (storedOtp && storedOtp === otp) {
-      otps.delete(email);
-      res.json({ status: 'ok' });
-    } else {
-      res.status(400).json({ error: 'Invalid OTP' });
+    console.log(`[VERIFY-OTP] Verification attempt for: ${email}`);
+
+    if (!record) {
+      console.warn(`[VERIFY-OTP] No OTP found in memory for: ${email} — OTP was never generated or already used`);
+      return res.status(400).json({ error: 'Invalid OTP' });
     }
+
+    const ageSeconds = Math.floor((Date.now() - record.generatedAt) / 1000);
+    const OTP_TTL_SECONDS = 300;
+
+    if (ageSeconds > OTP_TTL_SECONDS) {
+      otps.delete(email);
+      console.warn(`[VERIFY-OTP] OTP for ${email} expired (age: ${ageSeconds}s, TTL: ${OTP_TTL_SECONDS}s)`);
+      return res.status(400).json({ error: 'OTP has expired. Please request a new one.' });
+    }
+
+    if (record.otp !== String(otp)) {
+      console.warn(`[VERIFY-OTP] OTP mismatch for ${email} (age: ${ageSeconds}s)`);
+      return res.status(400).json({ error: 'Invalid OTP' });
+    }
+
+    otps.delete(email);
+    console.log(`[VERIFY-OTP] OTP verified successfully for ${email} (age: ${ageSeconds}s)`);
+    res.json({ status: 'ok' });
   });
 
   // Vite middleware for development
