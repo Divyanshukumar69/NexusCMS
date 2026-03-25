@@ -754,40 +754,44 @@ async function startServer() {
 
     // 3. Send email via Nodemailer
     try {
-      const transporter = await getTransporter();
+      // Check if SMTP is configured (either in Env or DB)
+      const { rows: settingsRows } = await pool.query('SELECT contact_form_email, email_password FROM website_settings WHERE id = 1');
+      const settings = settingsRows[0] || {};
+      const smtpUser = process.env.EMAIL_USER || settings.contact_form_email;
+      const smtpPass = process.env.EMAIL_PASS || settings.email_password;
 
-      const targetEmail = process.env.ADMIN_OTP_EMAIL || 'divyanshucmd@gmail.com';
-      const mailOptions = {
-        from: `"NexusCMS Auth" <${process.env.EMAIL_USER}>`,
-        to: targetEmail,
-        subject: 'Your Admin Portal OTP',
-        text: `Your one-time password for admin access is: ${otp}. It will expire shortly.`,
-        html: `
-          <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px; max-width: 500px;">
-            <h2 style="color: #2563eb;">NexusCMS Admin Access</h2>
-            <p>A login attempt was made with your credentials. Use the following OTP to proceed:</p>
-            <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #1e40af; background: #f8fafc; padding: 10px; border-radius: 8px; text-align: center; margin: 20px 0;">
-              ${otp}
-            </div>
-            <p style="font-size: 12px; color: #64748b;">If you didn't request this code, please ignore this email and secure your account.</p>
-          </div>
-        `,
-      };
-
-      // Check if SMTP is configured
-      if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-        console.warn(`[OTP SERVICE] SMTP not configured. OTP: ${otp} (Displayed for fallback)`);
+      if (!smtpUser || !smtpPass) {
+        console.warn(`[OTP SERVICE] SMTP not configured. OTP: ${otp} (Demo Mode)`);
         return res.json({
-          message: 'OTP sent successfully (SMTP NOT CONFIGURED - CHECK SERVER CONSOLE FOR DEMO OTP)',
+          message: 'OTP generated (SMTP NOT CONFIGURED)',
           demo_otp: otp
         });
       }
 
-      // Send email in background - extremely fast login
-      transporter.sendMail(mailOptions).catch(err => console.error('[OTP ERROR] Background mail failed:', err));
+      const transporter = await getTransporter();
+      const targetEmail = process.env.ADMIN_OTP_EMAIL || settings.contact_form_email || 'divyanshucmd@gmail.com';
       
-      console.log(`[OTP SERVICE] OTP ${otp} being sent to ${targetEmail} in background...`);
-      res.json({ message: 'Digital token dispatched. Check your neural inbox.' });
+      const mailOptions = {
+        from: `"NexusCMS Auth" <${smtpUser}>`,
+        to: targetEmail,
+        subject: 'Admin Neural Access Token',
+        html: `
+          <div style="font-family: sans-serif; padding: 30px; border: 1px solid #1e293b; border-radius: 20px; max-width: 500px; background: #0f172a; color: white;">
+            <h2 style="color: #3b82f6;">NexusCMS Intelligence Access</h2>
+            <p style="color: #94a3b8;">Use the following neural token to authorize your session:</p>
+            <div style="font-size: 42px; font-weight: 900; letter-spacing: 10px; color: #fff; background: rgba(255,255,255,0.05); padding: 25px; border-radius: 12px; text-align: center; margin: 30px 0; border: 1px solid rgba(59,130,246,0.3);">
+              ${otp}
+            </div>
+            <p style="font-size: 11px; color: #475569; text-align: center;">Authorized personnel only. Dynamic token expires in 300 cycles.</p>
+          </div>
+        `,
+      };
+
+      // Send email in background - extremely fast login
+      transporter.sendMail(mailOptions).catch(err => console.error('[OTP ERROR] Background mail failed:', err.message));
+      
+      console.log(`[OTP SERVICE] Token ${otp} dispatched to ${targetEmail} in background...`);
+      res.json({ message: 'Neural token dispatched. Check your neural inbox.' });
 
     } catch (error) {
       console.error('Error sending email:', error);
