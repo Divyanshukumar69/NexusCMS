@@ -136,6 +136,24 @@ async function startServer() {
   };
 
   await initDb();
+  
+  // Shared Transporter Function for speed & consistency
+  const getTransporter = async () => {
+    const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
+    const settings = settingsRows[0] || {};
+    
+    return nodemailer.createTransport({
+      service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
+      host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
+      port: !process.env.EMAIL_SERVICE ? 465 : undefined,
+      secure: !process.env.EMAIL_SERVICE ? true : undefined,
+      auth: {
+        user: process.env.EMAIL_USER || settings.contact_form_email,
+        pass: process.env.EMAIL_PASS || settings.email_password,
+      },
+      tls: { rejectUnauthorized: false }
+    });
+  };
 
   // API Routes
 
@@ -160,17 +178,7 @@ async function startServer() {
         return res.json({ success: true, count: 0, message: 'No overdue students found' });
       }
 
-      const transporter = nodemailer.createTransport({
-        service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
-        host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
-        port: !process.env.EMAIL_SERVICE ? 465 : undefined,
-        secure: !process.env.EMAIL_SERVICE ? true : undefined,
-        auth: {
-          user: fromEmail,
-          pass: process.env.EMAIL_PASS || settings.email_password,
-        },
-        tls: { rejectUnauthorized: false }
-      });
+      const transporter = await getTransporter();
 
       let sentCount = 0;
       const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -496,19 +504,7 @@ async function startServer() {
       const { rows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
       const settings = rows[0] || {};
 
-      const transporter = nodemailer.createTransport({
-        service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
-        host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
-        port: !process.env.EMAIL_SERVICE ? 465 : undefined,
-        secure: !process.env.EMAIL_SERVICE ? true : undefined,
-        auth: {
-          user: process.env.EMAIL_USER || settings.contact_form_email,
-          pass: process.env.EMAIL_PASS || settings.email_password,
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
+      const transporter = await getTransporter();
 
       console.log(`\n================================`);
       console.log(`[CONTACT FORM] Message from ${name} (${email})`);
@@ -565,19 +561,7 @@ async function startServer() {
 
       if (fromEmail) {
         try {
-          const transporter = nodemailer.createTransport({
-            service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
-            host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
-            port: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? 465 : undefined,
-            secure: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? true : undefined,
-            auth: {
-              user: process.env.EMAIL_USER || settings.contact_form_email,
-              pass: process.env.EMAIL_PASS || settings.email_password,
-            },
-            tls: {
-              rejectUnauthorized: false
-            }
-          });
+          const transporter = await getTransporter();
 
           await transporter.sendMail({
             from: `"${fromName}" <${fromEmail}>`,
@@ -648,17 +632,7 @@ async function startServer() {
         const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password, institute_name FROM website_settings WHERE id = 1');
         const settings = settingsRows[0] || {};
         
-        const transporter = nodemailer.createTransport({
-          service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
-          host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
-          port: !process.env.EMAIL_SERVICE ? 465 : undefined,
-          secure: !process.env.EMAIL_SERVICE ? true : undefined,
-          auth: {
-            user: process.env.EMAIL_USER || settings.contact_form_email,
-            pass: process.env.EMAIL_PASS || settings.email_password,
-          },
-          tls: { rejectUnauthorized: false }
-        });
+        const transporter = await getTransporter();
 
         const targetUser = process.env.EMAIL_USER || settings.contact_form_email;
         if (targetUser) {
@@ -780,13 +754,7 @@ async function startServer() {
 
     // 3. Send email via Nodemailer
     try {
-      const transporter = nodemailer.createTransport({
-        service: process.env.EMAIL_SERVICE || 'gmail',
-        auth: {
-          user: process.env.EMAIL_USER,
-          pass: process.env.EMAIL_PASS,
-        },
-      });
+      const transporter = await getTransporter();
 
       const targetEmail = process.env.ADMIN_OTP_EMAIL || 'divyanshucmd@gmail.com';
       const mailOptions = {

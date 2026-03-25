@@ -54,33 +54,40 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-white dark:bg-gray-950 transition-colors duration-300">
+    <div className="min-h-screen bg-obsidian-surface text-on-surface font-inter antialiased selection:bg-obsidian-primary/30 relative overflow-hidden">
+      {/* Background Decorative Glows */}
+      <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] obsidian-gradient opacity-10 blur-[150px] rounded-full pointer-events-none"></div>
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] obsidian-gradient opacity-5 blur-[150px] rounded-full pointer-events-none"></div>
+
       <EnrollModal isOpen={isEnrollModalOpen} onClose={() => setIsEnrollModalOpen(false)} />
       {/* Navbar */}
-      <nav className="sticky top-0 z-[100] bg-white dark:bg-gray-950 border-b dark:border-white/5 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-3 group">
-            <div className="p-2 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform">
-              <GraduationCap className="text-white" size={24} />
+      <nav className="sticky top-0 z-[100] bg-obsidian-surface/60 backdrop-blur-2xl border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-6 h-28 flex items-center justify-between">
+          <Link to="/" className="flex items-center space-x-4 group">
+            <div className="p-3 bg-obsidian-container-high rounded-[1.25rem] group-hover:scale-110 transition-all shadow-xl group-hover:shadow-glow">
+              <GraduationCap className="text-obsidian-primary" size={32} />
             </div>
-            <span className="text-2xl font-black text-gray-900 dark:text-white tracking-tighter italic">
-              {settings.institute_name || 'NexusCMS'}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-3xl font-black text-white tracking-tighter leading-none">
+                {settings.institute_name || 'NexusCMS'}
+              </span>
+              <span className="text-[8px] font-black text-gray-500 uppercase tracking-[0.3em] mt-1">Academic Core</span>
+            </div>
           </Link>
           
           {/* Desktop Nav */}
-          <div className="hidden lg:flex items-center space-x-8 font-bold text-sm uppercase tracking-widest">
-            <Link to="/" className="text-blue-600">Home</Link>
-            <Link to="/courses" className="text-gray-500 hover:text-blue-600 transition-colors">Courses</Link>
-            <Link to="/pay" className="px-6 py-2.5 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl hover:scale-105 transition-all shadow-lg active:scale-95">
-              Student Portal
+          <div className="hidden lg:flex items-center space-x-12 font-bold text-[10px] uppercase tracking-[0.2em]">
+            <Link to="/" className="text-obsidian-primary border-b-2 border-obsidian-primary pb-1">Nexus::Home</Link>
+            <Link to="/courses" className="text-gray-500 hover:text-white transition-colors">Nexus::Courses</Link>
+            <Link to="/pay" className="premium-button px-8 py-3.5 shadow-glow">
+              Authorize Portal
             </Link>
           </div>
 
           {/* Mobile Toggle */}
           <button 
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="lg:hidden p-3 bg-gray-100 dark:bg-white/5 rounded-2xl text-gray-900 dark:text-white"
+            className="lg:hidden p-4 bg-obsidian-container-high rounded-2xl text-white shadow-lg"
           >
             {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -129,21 +136,23 @@ export default function LandingPage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-sm font-medium mb-6">
-              <Star size={16} className="mr-2" /> Top Rated Coaching Institute
+            <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-obsidian-primary/10 border border-obsidian-primary/20 text-obsidian-primary text-xs font-black uppercase tracking-widest mb-8">
+              <Star size={14} className="mr-2" /> Top Rated Academic Infrastructure
             </div>
-            <h1 className="text-3xl sm:text-4xl md:text-6xl lg:text-7xl font-bold text-gray-900 dark:text-white leading-tight">
-              Empowering Minds, <br className="hidden md:block" /> <span className="text-blue-600 dark:text-blue-400">Shaping Futures.</span>
+            <h1 className="text-5xl md:text-8xl font-black obsidian-text-gradient tracking-tighter font-manrope leading-[0.9]">
+              Future Starts <br/>
+              <span className="text-white">With NexusCMS</span>
             </h1>
-            <p className="mt-6 text-xl text-gray-600 dark:text-gray-400 max-w-lg">
-              Welcome to {settings.institute_name || 'NexusCMS Coaching'}, where excellence meets opportunity. We provide world-class education and a seamless fee management experience.
+            <p className="mt-8 max-w-lg text-lg text-gray-400 font-medium leading-relaxed opacity-80">
+              The ultimate high-performance coaching ecosystem. Deploy your academic career with precision-engineered learning modules and data-driven monitoring.
             </p>
-            <div className="mt-10 flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
+            <div className="mt-12 flex flex-col sm:flex-row space-y-5 sm:space-y-0 sm:space-x-6">
               <button
                 onClick={() => setIsEnrollModalOpen(true)}
-                className="flex items-center justify-center px-8 py-4 bg-gray-900 dark:bg-white text-white dark:text-gray-900 rounded-xl font-semibold hover:bg-gray-800 dark:hover:bg-gray-100 transition-all shadow-lg"
+                className="premium-button flex items-center justify-center px-12 py-5 shadow-2xl"
               >
-                Enroll Now <ArrowRight size={20} className="ml-2" />
+                <span className="tracking-widest uppercase text-xs">Enroll Securely</span>
+                <ArrowRight size={20} className="ml-3" />
               </button>
             </div>
           </motion.div>
