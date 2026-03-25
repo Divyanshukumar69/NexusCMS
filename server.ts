@@ -144,9 +144,11 @@ async function startServer() {
     const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
     const settings = settingsRows[0] || {};
     
+    const isGmail = (process.env.EMAIL_SERVICE || 'gmail').toLowerCase() === 'gmail';
+    
     cachedTransporter = nodemailer.createTransport({
-      service: (process.env.EMAIL_SERVICE || 'gmail').toLowerCase() === 'gmail' ? 'gmail' : undefined,
-      host: (process.env.EMAIL_SERVICE || 'smtp.gmail.com').toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST) : undefined,
+      service: isGmail ? 'gmail' : undefined,
+      host: !isGmail ? (settings.smtp_host || process.env.EMAIL_HOST) : undefined,
       port: 465,
       secure: true,
       auth: {
@@ -787,11 +789,12 @@ async function startServer() {
         `,
       };
 
-      // Send email in background - extremely fast login
-      transporter.sendMail(mailOptions).catch(err => console.error('[OTP ERROR] Background mail failed:', err.message));
+      // Send email synchronously to catch errors
+      console.log(`[OTP SERVICE] Attempting sync delivery to ${targetEmail}...`);
+      await transporter.sendMail(mailOptions);
       
-      console.log(`[OTP SERVICE] Token ${otp} dispatched to ${targetEmail} in background...`);
-      res.json({ message: 'Neural token dispatched. Check your neural inbox.' });
+      console.log(`[OTP SERVICE] Token ${otp} successfully reached inbox of ${targetEmail}`);
+      res.json({ message: `Neural token dispatched to ${targetEmail}. Check your neural inbox.` });
 
     } catch (error) {
       console.error('Error sending email:', error);
