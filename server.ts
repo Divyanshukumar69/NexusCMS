@@ -138,11 +138,13 @@ async function startServer() {
   await initDb();
   
   // Shared Transporter Function for speed & consistency
+  let cachedTransporter: any = null;
   const getTransporter = async () => {
+    if (cachedTransporter) return cachedTransporter;
     const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
     const settings = settingsRows[0] || {};
     
-    return nodemailer.createTransport({
+    cachedTransporter = nodemailer.createTransport({
       service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
       host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
       port: !process.env.EMAIL_SERVICE ? 465 : undefined,
@@ -153,7 +155,10 @@ async function startServer() {
       },
       tls: { rejectUnauthorized: false }
     });
+    return cachedTransporter;
   };
+
+  // API Routes
 
   // API Routes
 
@@ -516,20 +521,17 @@ async function startServer() {
       const targetPass = process.env.EMAIL_PASS || settings.email_password;
 
       if (targetUser && targetPass) {
-        console.log(`[SMTP] Forwarding contact message to ${targetUser}...`);
-        await transporter.sendMail({
+        console.log(`[SMTP] Backgrounding contact message to ${targetUser}...`);
+        transporter.sendMail({
           from: `"${name}" <${targetUser}>`,
           to: targetUser,
           replyTo: email,
           subject: `New Contact Message from ${name}`,
           text: `Name: ${name}\nEmail: ${email}\n\nMessage:\n${message}`,
-        });
-        console.log('[SMTP] Contact message successfully forwarded.');
-      } else {
-        console.warn('[SMTP] Forwarding skipped (credentials missing).');
+        }).catch(e => console.error('[SMTP ERR] Background contact mail failed:', e.message));
       }
 
-      res.json({ success: true });
+      res.json({ success: true, message: 'Neural transmission received. Unit will respond.' });
     } catch (error: any) {
       console.error('[DB] Contact Mail Error:', error.message);
       res.status(500).json({ error: 'Failed to send message' });
@@ -563,18 +565,16 @@ async function startServer() {
         try {
           const transporter = await getTransporter();
 
-          await transporter.sendMail({
+          transporter.sendMail({
             from: `"${fromName}" <${fromEmail}>`,
             to: studentEmail,
             subject: 'Your Student Portal Login OTP',
             html: `<div style="font-family: Arial; padding: 20px; text-align: center;"><h2>Student Portal Access</h2><p>Your one-time password is:</p><h1 style="color: #2563eb; letter-spacing: 5px; background: #f3f4f6; padding: 15px; display: inline-block; border-radius: 8px;">${otp}</h1></div>`
-          });
-          console.log(`[SMTP] OTP Email successfully dispatched to ${studentEmail}`);
+          }).catch(e => console.error('[SMTP ERR] Background OTP fail:', e.message));
+          
+          console.log(`[SMTP] Backgroundizing delivery to ${studentEmail}...`);
         } catch (mailError: any) {
-          console.error('[SMTP Sending Error]:', mailError.message);
-          if (process.env.NODE_ENV === 'production') {
-            return res.status(500).json({ error: 'Failed to dispatch email. Please notify admin.' });
-          }
+          console.error('[SMTP ERR] Setup fail:', mailError.message);
         }
       }
  else {
@@ -627,36 +627,28 @@ async function startServer() {
         [name, email || null, phone, courseId || null, message || '', parent_name || null, address || null, previous_school || null]
       );
       
-      // Notify Admin
-      try {
-        const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password, institute_name FROM website_settings WHERE id = 1');
-        const settings = settingsRows[0] || {};
-        
-        const transporter = await getTransporter();
-
-        const targetUser = process.env.EMAIL_USER || settings.contact_form_email;
-        if (targetUser) {
-           await transporter.sendMail({
-            from: `"${settings.institute_name || 'NexusCMS'}" <${targetUser}>`,
-            to: targetUser,
-            subject: `New Admission Inquiry from ${name}`,
-            text: `A new student has applied for admission!\n\n` +
-                  `Student: ${name}\n` +
-                  `Parent: ${parent_name}\n` +
-                  `Phone: ${phone}\n` +
-                  `Email: ${email || 'N/A'}\n` +
-                  `Class/Course ID: ${courseId}\n` +
-                  `Address: ${address}\n` +
-                  `Prev School: ${previous_school || 'N/A'}\n` +
-                  `Message: ${message || 'No message'}\n\n` +
-                  `Please follow up via the Admin Dashboard.`,
-          });
-        }
-      } catch (mailErr: any) {
-        console.warn('[MAIL_FAIL] Lead notification skipped:', mailErr.message);
-      }
-
       res.json(rows[0]);
+
+      // Notify Admin in background
+      (async () => {
+        try {
+          const { rows: settingsRows } = await pool.query('SELECT contact_form_email, institute_name FROM website_settings WHERE id = 1');
+          const settings = settingsRows[0] || {};
+          const transporter = await getTransporter();
+          const targetUser = process.env.EMAIL_USER || settings.contact_form_email;
+          
+          if (targetUser) {
+            transporter.sendMail({
+              from: `"${settings.institute_name || 'NexusCMS'}" <${targetUser}>`,
+              to: targetUser,
+              subject: `New Admission Inquiry from ${name}`,
+              text: `A new student has applied for admission!\n\nCandidate: ${name}\nPhone: ${phone}\nCourse ID: ${courseId}`,
+            }).catch(e => console.error('[SMTP ERR] Background enroll mail fail:', e.message));
+          }
+        } catch (mailErr: any) {
+          console.warn('[MAIL_FAIL] Background notification error:', mailErr.message);
+        }
+      })();
     } catch (error: any) {
       console.error('[DB] Enroll Error:', error.message);
       res.status(500).json({ error: 'Failed to submit enrollment' });
@@ -783,9 +775,11 @@ async function startServer() {
         });
       }
 
-      await transporter.sendMail(mailOptions);
-      console.log(`[OTP SERVICE] OTP ${otp} sent to ${targetEmail}`);
-      res.json({ message: 'OTP sent successfully to admin email' });
+      // Send email in background - extremely fast login
+      transporter.sendMail(mailOptions).catch(err => console.error('[OTP ERROR] Background mail failed:', err));
+      
+      console.log(`[OTP SERVICE] OTP ${otp} being sent to ${targetEmail} in background...`);
+      res.json({ message: 'Digital token dispatched. Check your neural inbox.' });
 
     } catch (error) {
       console.error('Error sending email:', error);
