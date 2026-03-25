@@ -139,16 +139,16 @@ async function startServer() {
   
   // Shared Transporter Function for speed & consistency
   let cachedTransporter: any = null;
-  const getTransporter = async () => {
-    if (cachedTransporter) return cachedTransporter;
+  const getTransporter = async (forceRefresh = false) => {
+    if (cachedTransporter && !forceRefresh) return cachedTransporter;
     const { rows: settingsRows } = await pool.query('SELECT contact_form_email, smtp_host, email_password FROM website_settings WHERE id = 1');
     const settings = settingsRows[0] || {};
     
     cachedTransporter = nodemailer.createTransport({
-      service: process.env.EMAIL_SERVICE?.toLowerCase() === 'gmail' ? 'gmail' : undefined,
-      host: process.env.EMAIL_SERVICE?.toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST || 'smtp.gmail.com') : undefined,
-      port: !process.env.EMAIL_SERVICE ? 465 : undefined,
-      secure: !process.env.EMAIL_SERVICE ? true : undefined,
+      service: (process.env.EMAIL_SERVICE || 'gmail').toLowerCase() === 'gmail' ? 'gmail' : undefined,
+      host: (process.env.EMAIL_SERVICE || 'smtp.gmail.com').toLowerCase() !== 'gmail' ? (settings.smtp_host || process.env.EMAIL_HOST) : undefined,
+      port: 465,
+      secure: true,
       auth: {
         user: process.env.EMAIL_USER || settings.contact_form_email,
         pass: process.env.EMAIL_PASS || settings.email_password,
@@ -157,6 +157,11 @@ async function startServer() {
     });
     return cachedTransporter;
   };
+
+  // Pre-warm the cache
+  await getTransporter().catch(e => console.warn('[SMTP] Startup warmup failed:', e.message));
+
+  // API Routes
 
   // API Routes
 
@@ -496,6 +501,9 @@ async function startServer() {
          WHERE id = 1 RETURNING *`,
         [institute_name, phone, email, address, facebook_url, twitter_url, instagram_url, linkedin_url, contact_form_email, smtp_host, email_password]
       );
+      // Invalidate SMTP cache to use new credentials immediately
+      await getTransporter(true);
+      
       res.json(rows[0]);
     } catch (error) {
       console.error('[DB] Setting save error:', error);
